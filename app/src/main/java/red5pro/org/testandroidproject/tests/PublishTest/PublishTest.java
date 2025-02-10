@@ -1,6 +1,32 @@
+//
+// Copyright © 2015 Infrared5, Inc. All rights reserved.
+//
+// The accompanying code comprising examples for use solely in conjunction with Red5 Pro (the "Example Code")
+// is  licensed  to  you  by  Infrared5  Inc.  in  consideration  of  your  agreement  to  the  following
+// license terms  and  conditions.  Access,  use,  modification,  or  redistribution  of  the  accompanying
+// code  constitutes your acceptance of the following license terms and conditions.
+//
+// Permission is hereby granted, free of charge, to you to use the Example Code and associated documentation
+// files (collectively, the "Software") without restriction, including without limitation the rights to use,
+// copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The Software shall be used solely in conjunction with Red5 Pro. Red5 Pro is licensed under a separate end
+// user  license  agreement  (the  "EULA"),  which  must  be  executed  with  Infrared5,  Inc.
+// An  example  of  the EULA can be found on our website at: https://account.red5pro.com/assets/LICENSE.txt.
+//
+// The above copyright notice and this license shall be included in all copies or portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,  INCLUDING  BUT
+// NOT  LIMITED  TO  THE  WARRANTIES  OF  MERCHANTABILITY, FITNESS  FOR  A  PARTICULAR  PURPOSE  AND
+// NONINFRINGEMENT.   IN  NO  EVENT  SHALL INFRARED5, INC. BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+// WHETHER IN  AN  ACTION  OF  CONTRACT,  TORT  OR  OTHERWISE,  ARISING  FROM,  OUT  OF  OR  IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
 package red5pro.org.testandroidproject.tests.PublishTest;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.Configuration;
 import android.graphics.Rect;
@@ -13,6 +39,7 @@ import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import com.red5pro.streaming.R5Connection;
 import com.red5pro.streaming.R5Stream;
@@ -41,13 +68,37 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
 
     protected PublishTestListener publishTestListener;
 
-    public PublishTest(){
+    public PublishTest() {}
 
-    }
+	protected void showToast (String message) {
+		final CharSequence text = message;
+		final Context context = getContext();
+		final int duration = Toast.LENGTH_SHORT;
+
+		if (getActivity() == null || context == null) {
+			return;
+		}
+
+		try {
+			getActivity().runOnUiThread(new Runnable() {
+				@Override
+				public void run() {
+					Toast toast = Toast.makeText(context, text, duration);
+					toast.show();
+				}
+			});
+		} catch (Exception e) {
+			// Most likely have moved away from activity back to main listing on Event.CLOSE.
+			e.printStackTrace();
+		}
+	}
 
     @Override
     public void onConnectionEvent(R5ConnectionEvent event) {
-        Log.d("Publisher", ":onConnectionEvent " + event.name());
+        Log.d("Publisher", ":onConnectionEvent " + event.name() + " - " + event.message);
+		String msg = event.message;
+		showToast(msg == null ? event.name() : msg);
+
         if (event.name() == R5ConnectionEvent.LICENSE_ERROR.name()) {
             Handler h = new Handler(Looper.getMainLooper());
             h.post(new Runnable() {
@@ -70,7 +121,7 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
                        }
                    });
         }
-        if (event.name() == R5ConnectionEvent.START_STREAMING.name()){
+        else if (event.name() == R5ConnectionEvent.START_STREAMING.name()){
 //            publish.setFrameListener(new R5FrameListener() {
 //                @Override
 //                public void onBytesReceived(byte[] bytes, int i, int i1) {
@@ -108,6 +159,7 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
 
         return rootView;
     }
+
     protected void publish(){
         String b = getActivity().getPackageName();
 
@@ -120,6 +172,11 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
         config.setLicenseKey(TestContent.GetPropertyString("license_key"));
         config.setBundleID(b);
 
+		String params = TestContent.getConnectionParams();
+		if (params != null) {
+			config.setParameters(params);
+		}
+
         R5Connection connection = new R5Connection(config);
 
         //setup a new stream using the connection
@@ -130,37 +187,43 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
         //show all logging
         publish.setLogLevel(R5Stream.LOG_LEVEL_DEBUG);
 
-        if(TestContent.GetPropertyBool("video_on")) {
-            //attach a camera video source
-            cam = openFrontFacingCameraGingerbread();
-            cam.setDisplayOrientation((camOrientation + 180) % 360);
-
-            camera = new R5Camera(cam, TestContent.GetPropertyInt("camera_width"), TestContent.GetPropertyInt("camera_height"));
-            camera.setBitrate(TestContent.GetPropertyInt("bitrate"));
-            camera.setOrientation(camOrientation);
-            camera.setFramerate(TestContent.GetPropertyInt("fps"));
-        }
-
         if(TestContent.GetPropertyBool("audio_on")) {
             //attach a microphone
-            R5Microphone mic = new R5Microphone();
-            publish.attachMic(mic);
+            attachMic();
         }
 
         preview.attachStream(publish);
 
-        if(TestContent.GetPropertyBool("video_on"))
-            publish.attachCamera(camera);
+        if(TestContent.GetPropertyBool("video_on")) {
+            //attach a camera video source
+            attachCamera();
+        }
 
         preview.showDebugView(TestContent.GetPropertyBool("debug_view"));
 
         publish.setListener(this);
-        publish.publish(TestContent.GetPropertyString("stream1"), R5Stream.RecordType.Live);
+        publish.publish(TestContent.GetPropertyString("stream1"), getPublishRecordType());
 
         if(TestContent.GetPropertyBool("video_on")) {
             cam.startPreview();
         }
 
+    }
+
+    protected void attachCamera(){
+        cam = openFrontFacingCameraGingerbread();
+        cam.setDisplayOrientation((camOrientation + 180) % 360);
+
+        camera = new R5Camera(cam, TestContent.GetPropertyInt("camera_width"), TestContent.GetPropertyInt("camera_height"));
+        camera.setBitrate(TestContent.GetPropertyInt("bitrate"));
+        camera.setOrientation(camOrientation);
+        camera.setFramerate(TestContent.GetPropertyInt("fps"));
+        publish.attachCamera(camera);
+    }
+
+    protected void attachMic(){
+        R5Microphone mic = new R5Microphone();
+        publish.attachMic(mic);
     }
 
     protected Camera openFrontFacingCameraGingerbread() {
@@ -212,6 +275,7 @@ public class PublishTest extends TestDetailFragment implements R5ConnectionListe
 
         publishTestListener = listener;
         if (publish != null) {
+            preview.attachStream(null);
             publish.stop();
 
             if(publish.getVideoSource() != null) {

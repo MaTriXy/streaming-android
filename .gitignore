@@ -20,3 +20,8 @@ hs_err_pid*
 /.idea/libraries
 .DS_Store
 /build
+/.idea/caches
+/.idea/codeStyles
+/.idea/copilot
+/.idea/deploymentTargetDropDown.xml
+/.idea/migrations.xml

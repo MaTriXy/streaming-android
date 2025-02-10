@@ -1,5 +1,33 @@
+//
+// Copyright © 2015 Infrared5, Inc. All rights reserved.
+//
+// The accompanying code comprising examples for use solely in conjunction with Red5 Pro (the "Example Code")
+// is  licensed  to  you  by  Infrared5  Inc.  in  consideration  of  your  agreement  to  the  following
+// license terms  and  conditions.  Access,  use,  modification,  or  redistribution  of  the  accompanying
+// code  constitutes your acceptance of the following license terms and conditions.
+//
+// Permission is hereby granted, free of charge, to you to use the Example Code and associated documentation
+// files (collectively, the "Software") without restriction, including without limitation the rights to use,
+// copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The Software shall be used solely in conjunction with Red5 Pro. Red5 Pro is licensed under a separate end
+// user  license  agreement  (the  "EULA"),  which  must  be  executed  with  Infrared5,  Inc.
+// An  example  of  the EULA can be found on our website at: https://account.red5pro.com/assets/LICENSE.txt.
+//
+// The above copyright notice and this license shall be included in all copies or portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,  INCLUDING  BUT
+// NOT  LIMITED  TO  THE  WARRANTIES  OF  MERCHANTABILITY, FITNESS  FOR  A  PARTICULAR  PURPOSE  AND
+// NONINFRINGEMENT.   IN  NO  EVENT  SHALL INFRARED5, INC. BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+// WHETHER IN  AN  ACTION  OF  CONTRACT,  TORT  OR  OTHERWISE,  ARISING  FROM,  OUT  OF  OR  IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
 package red5pro.org.testandroidproject.tests.SharedObjectTest;
 
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.hardware.Camera;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -33,6 +61,7 @@ import java.sql.Date;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 
+import red5pro.org.testandroidproject.PublishTestListener;
 import red5pro.org.testandroidproject.R;
 import red5pro.org.testandroidproject.tests.PublishTest.PublishTest;
 import red5pro.org.testandroidproject.tests.TestContent;
@@ -42,14 +71,48 @@ import red5pro.org.testandroidproject.tests.TestContent;
  */
 
 public class SharedObjectTest extends PublishTest{
-    private Thread callThread;
+    protected Thread callThread;
     private R5Stream stream;
-    private R5SharedObject sObject;
-    private TextView chatView;
-    private EditText chatInput;
-    private Button chatSend;
-    private ArrayList<String> messageBuffer;
-    private int thisUser;
+    protected R5SharedObject sObject;
+    protected TextView chatView;
+    protected EditText chatInput;
+    protected int maxMessages = 20;
+    protected Button chatSend;
+    protected ArrayList<String> messageBuffer;
+    protected String thisUser = "subscriber-";
+    protected boolean useHTTPS = false;
+
+    protected Button redButton;
+    protected Button greenButton;
+    protected Button blueButton;
+    protected Button blackButton;
+
+    protected View.OnClickListener colorPicker = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            if (sObject == null) return;
+
+            Drawable background = view.getBackground();
+            int color = Color.BLACK;
+            if (background instanceof ColorDrawable) {
+                color = ((ColorDrawable) background).getColor();
+            }
+            String hexStr = "#"+Integer.toHexString(color).substring(2);
+            sObject.setProperty("color", hexStr);
+            setChatViewToHex(hexStr);
+        }
+    };
+
+    protected void assignColorPickerHandler (View root) {
+        redButton = (Button)root.findViewById(R.id.redButton);
+        greenButton = (Button)root.findViewById(R.id.greenButton);
+        blueButton = (Button)root.findViewById(R.id.blueButton);
+        blackButton = (Button)root.findViewById(R.id.blackButton);
+        redButton.setOnClickListener(colorPicker);
+        greenButton.setOnClickListener(colorPicker);
+        blueButton.setOnClickListener(colorPicker);
+        blackButton.setOnClickListener(colorPicker);
+    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -66,6 +129,8 @@ public class SharedObjectTest extends PublishTest{
                 sendMessage();
             }
         });
+
+        assignColorPickerHandler(rootView);
 
         messageBuffer = new ArrayList<String>();
 
@@ -91,6 +156,11 @@ public class SharedObjectTest extends PublishTest{
         config.setLicenseKey(TestContent.GetPropertyString("license_key"));
         config.setBundleID(getActivity().getPackageName());
 
+		String params = TestContent.getConnectionParams();
+		if (params != null) {
+			config.setParameters(params);
+		}
+
         R5Connection connection = new R5Connection(config);
 
         //setup a new stream using the connection
@@ -110,13 +180,13 @@ public class SharedObjectTest extends PublishTest{
 
         preview.showDebugView(TestContent.GetPropertyBool("debug_view"));
 
-        stream.play(TestContent.GetPropertyString("stream1"));
+        stream.play(TestContent.GetPropertyString("stream1"), TestContent.GetPropertyBool("hwAccel_on"));
     }
 
     @Override
     public void onConnectionEvent(R5ConnectionEvent r5ConnectionEvent) {
 
-        if(r5ConnectionEvent.name() == R5ConnectionEvent.START_STREAMING.name()){
+        if(r5ConnectionEvent.value() == R5ConnectionEvent.START_STREAMING.value()){
             final SharedObjectTest safeThis = this;
             callThread = new Thread(new Runnable() {
                 @Override
@@ -136,21 +206,31 @@ public class SharedObjectTest extends PublishTest{
         }
     }
 
+    protected void setChatViewToHex (final String hexStr) {
+        getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                chatView.setTextColor(Color.parseColor(hexStr));
+            }
+        });
+    }
+
     //callback for remote object connection - remote object now available
-    public void onSharedObjectConnect(JSONObject objectValue){
+    public void onSharedObjectConnect(JSONObject objectValue) {
+        addMessage("Connected to object.");
         try {
-            addMessage("Connected to object, there are " + ((objectValue.has("count")) ? objectValue.getInt("count") : "no") + " other people connected");
-            thisUser = (objectValue.has("count") ? objectValue.getInt("count") + 1 : 1 );
-            //set the count property to add yourself
-            sObject.setProperty("count", thisUser);
-        } catch (JSONException e) { e.printStackTrace(); }
+            JSONObject data = sObject.getData();
+            String colorStr = data.has("color") ? data.getString("color") : "#000000";
+            setChatViewToHex(colorStr);
+        } catch (JSONException e) {}
     }
 
     //Called whenever a property of the shared object is changed
     public void onUpdateProperty(JSONObject propertyInfo){
 //        propertyInfo.keys().next() can be used to find which property has updated.
         try {
-            addMessage("Room update - There are now " + propertyInfo.getInt("count") + " users");
+            String hexString = propertyInfo.getString("color");
+            setChatViewToHex(hexString);
         } catch (JSONException e) {}
     }
 
@@ -161,15 +241,17 @@ public class SharedObjectTest extends PublishTest{
 
         JSONObject messageOut = new JSONObject();
         try {
-            messageOut.put("user", "" + thisUser);
+            messageOut.put("user", thisUser);
             messageOut.put("message", chatInText);
         } catch (JSONException e) {}
 
         //Calls for the relevant method with the sent parameters on all clients listening to the shared object
         //Note - This includes the client that sends the call
-        sObject.send("messageTransmit", messageOut);
+        if (sObject != null) {
+            sObject.send("messageTransmit", messageOut);
+            chatInput.setText("");
+        }
 
-        chatInput.setText("");
     }
 
     public void messageTransmit( JSONObject messageIn ){
@@ -180,7 +262,7 @@ public class SharedObjectTest extends PublishTest{
             message = messageIn.getString("message");
         } catch (JSONException e) { return; }
 
-        String display = "user#" + user + ": " + message;
+        String display = "User " + user + ": " + message;
 
         addMessage(display);
     }
@@ -190,7 +272,8 @@ public class SharedObjectTest extends PublishTest{
         addMessage("Retrieved list");
 
         final String port = TestContent.getFormattedPortSetting(TestContent.GetPropertyString("server_port"));
-        final String urlStr = "http://" + TestContent.GetPropertyString("host") + port + "/" + TestContent.GetPropertyString("context") + "/streams.jsp";
+        String protocol = (port.isEmpty() || port.equals("443")) ? "https" : "http";
+        final String urlStr = protocol + "://" + TestContent.GetPropertyString("host") + port + "/" + TestContent.GetPropertyString("context") + "/streams.jsp";
 
         if(callThread != null) {
             callThread.interrupt();
@@ -205,7 +288,9 @@ public class SharedObjectTest extends PublishTest{
                     HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
                     String responseString = "error: somehow string not assigned to?";
                     try {
-                        if (urlConnection.getResponseCode() == 200 && !Thread.interrupted()) {
+                        final int code = urlConnection.getResponseCode();
+                        Boolean isInterrupted = Thread.interrupted();
+                        if (code == 200 && !isInterrupted) {
                             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
                             StringBuilder stringBuilder = new StringBuilder();
                             String line;
@@ -218,6 +303,11 @@ public class SharedObjectTest extends PublishTest{
                             responseString = "error: http issue, response code - " + urlConnection.getResponseCode();
                         }
                     } catch (Exception e){
+                        e.printStackTrace();
+                        if(e.getLocalizedMessage().contains("Cleartext HTTP traffic")){
+                            useHTTPS = true;
+                            addMessage("Retrying with https");
+                        }
                     }finally {
                         urlConnection.disconnect();
                     }
@@ -277,7 +367,7 @@ public class SharedObjectTest extends PublishTest{
             @Override
             public void run() {
 
-                while (messageBuffer.size() > 20){
+                while (messageBuffer.size() > maxMessages){
                     messageBuffer.remove(0);
                 }
 
@@ -293,6 +383,14 @@ public class SharedObjectTest extends PublishTest{
     }
 
     @Override
+    public void stopPublish(PublishTestListener listener) {
+        if(stream == publish){
+            stream = null;
+        }
+        super.stopPublish(listener);
+    }
+
+    @Override
     public void onStop() {
         if(callThread != null){
             callThread.interrupt();
@@ -300,13 +398,6 @@ public class SharedObjectTest extends PublishTest{
         }
 
         if(sObject != null){
-            if(sObject.getData().has("count")) {
-                try {
-                    sObject.setProperty("count", sObject.getData().getInt("count") - 1);
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
             sObject.close();
             sObject.client = null;
             sObject = null;
@@ -315,19 +406,10 @@ public class SharedObjectTest extends PublishTest{
         if(stream != null){
             stream.setListener(null);
             stream.stop();
-
-            if(stream.getVideoSource() != null){
-                Camera c = ((R5Camera) stream.getVideoSource()).getCamera();
-                c.stopPreview();
-                c.release();
-            }
-
             stream = null;
-
-            if(publish != null)
-                publish = null;
         }
 
         super.onStop();
     }
+
 }

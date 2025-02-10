@@ -1,6 +1,6 @@
 # Subscribe Auto Reconnect Test
 
-This example utilizes overriding the `onConnectionEvent` method to test for and attempt to recover from connection errors or stopped streams by resubscribing after some preconfigured amount of time.
+This example utilizes overriding the `onConnectionEvent` method to test for and attempt to recover from connection errors or stopped streams by resubscribing after some preconfigured amount of time.  Prior to attempt to subscribe, it first makes a call on the `Streams API` to see if the stream is still active and available.
 
 ## Example Code
 
@@ -117,9 +117,7 @@ callThread.start();
 }
 ```
 
-<sup>
 [SubscribeReconnectTest.java #33](SubscribeReconnectTest.java#L33)
-</sup>
 
 Once the stream the subscriber is attempting to connect to has become available in the stream listing from the `Streams API`, you can continue to create a Subscriber session as you would normally.
 
@@ -180,6 +178,4 @@ subscribe.setListener(new R5ConnectionListener() {
 });
 ```
 
-<sup>
 [SubscribeReconnectTest.java #175](SubscribeReconnectTest.java#L175)
-</sup>
